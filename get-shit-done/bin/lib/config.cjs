@@ -4,23 +4,24 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error } = require('./core.cjs');
+const { planningDir, configPath } = require('./utils/paths.cjs');
+const { output, error } = require('./utils/output.cjs');
 
 function cmdConfigEnsureSection(cwd, raw) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
-  const planningDir = path.join(cwd, '.planning');
+  const _configPath = configPath(cwd);
+  const _planningDir = planningDir(cwd);
 
   // Ensure .planning directory exists
   try {
-    if (!fs.existsSync(planningDir)) {
-      fs.mkdirSync(planningDir, { recursive: true });
+    if (!fs.existsSync(_planningDir)) {
+      fs.mkdirSync(_planningDir, { recursive: true });
     }
   } catch (err) {
     error('Failed to create .planning directory: ' + err.message);
   }
 
   // Check if config already exists
-  if (fs.existsSync(configPath)) {
+  if (fs.existsSync(_configPath)) {
     const result = { created: false, reason: 'already_exists' };
     output(result, raw, 'exists');
     return;
@@ -73,7 +74,7 @@ function cmdConfigEnsureSection(cwd, raw) {
   };
 
   try {
-    fs.writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
+    fs.writeFileSync(_configPath, JSON.stringify(defaults, null, 2), 'utf-8');
     const result = { created: true, path: '.planning/config.json' };
     output(result, raw, 'created');
   } catch (err) {
@@ -82,7 +83,7 @@ function cmdConfigEnsureSection(cwd, raw) {
 }
 
 function cmdConfigSet(cwd, keyPath, value, raw) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const _configPath = configPath(cwd);
 
   if (!keyPath) {
     error('Usage: config-set <key.path> <value>');
@@ -97,8 +98,8 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
   // Load existing config or start with empty object
   let config = {};
   try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (fs.existsSync(_configPath)) {
+      config = JSON.parse(fs.readFileSync(_configPath, 'utf-8'));
     }
   } catch (err) {
     error('Failed to read config.json: ' + err.message);
@@ -118,7 +119,7 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
 
   // Write back
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    fs.writeFileSync(_configPath, JSON.stringify(config, null, 2), 'utf-8');
     const result = { updated: true, key: keyPath, value: parsedValue };
     output(result, raw, `${keyPath}=${parsedValue}`);
   } catch (err) {
@@ -127,7 +128,7 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
 }
 
 function cmdConfigGet(cwd, keyPath, raw) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const _configPath = configPath(cwd);
 
   if (!keyPath) {
     error('Usage: config-get <key.path>');
@@ -135,10 +136,10 @@ function cmdConfigGet(cwd, keyPath, raw) {
 
   let config = {};
   try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (fs.existsSync(_configPath)) {
+      config = JSON.parse(fs.readFileSync(_configPath, 'utf-8'));
     } else {
-      error('No config.json found at ' + configPath);
+      error('No config.json found at ' + _configPath);
     }
   } catch (err) {
     if (err.message.startsWith('No config.json')) throw err;

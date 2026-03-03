@@ -6,6 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+const { safeReadFile: _safeReadFileFromIo } = require('./utils/io.cjs');
+const { output: _output, error: _error } = require('./utils/output.cjs');
+const { execGit: _execGit, isGitIgnored: _isGitIgnored } = require('./utils/git.cjs');
+const { configPath: _configPath, phasesDir: _phasesDir, roadmapPath: _roadmapPath, planningDir: _planningDir } = require('./utils/paths.cjs');
+
 // ─── Path helpers ────────────────────────────────────────────────────────────
 
 /** Normalize a relative path to always use forward slashes (cross-platform). */
@@ -32,41 +37,15 @@ const MODEL_PROFILES = {
 
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
-function output(result, raw, rawValue) {
-  if (raw && rawValue !== undefined) {
-    process.stdout.write(String(rawValue));
-  } else {
-    const json = JSON.stringify(result, null, 2);
-    // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
-    // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
-    if (json.length > 50000) {
-      const tmpPath = path.join(require('os').tmpdir(), `gsd-${Date.now()}.json`);
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-      process.stdout.write('@file:' + tmpPath);
-    } else {
-      process.stdout.write(json);
-    }
-  }
-  process.exit(0);
-}
-
-function error(message) {
-  process.stderr.write('Error: ' + message + '\n');
-  process.exit(1);
-}
+const output = _output;
+const error = _error;
 
 // ─── File & Config utilities ──────────────────────────────────────────────────
 
-function safeReadFile(filePath) {
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch {
-    return null;
-  }
-}
+const safeReadFile = _safeReadFileFromIo;
 
 function loadConfig(cwd) {
-  const configPath = path.join(cwd, '.planning', 'config.json');
+  const configPath = _configPath(cwd);
   const defaults = {
     model_profile: 'balanced',
     commit_docs: true,
@@ -131,42 +110,8 @@ function loadConfig(cwd) {
 
 // ─── Git utilities ────────────────────────────────────────────────────────────
 
-function isGitIgnored(cwd, targetPath) {
-  try {
-    // --no-index checks .gitignore rules regardless of whether the file is tracked.
-    // Without it, git check-ignore returns "not ignored" for tracked files even when
-    // .gitignore explicitly lists them — a common source of confusion when .planning/
-    // was committed before being added to .gitignore.
-    execSync('git check-ignore -q --no-index -- ' + targetPath.replace(/[^a-zA-Z0-9._\-/]/g, ''), {
-      cwd,
-      stdio: 'pipe',
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function execGit(cwd, args) {
-  try {
-    const escaped = args.map(a => {
-      if (/^[a-zA-Z0-9._\-/=:@]+$/.test(a)) return a;
-      return "'" + a.replace(/'/g, "'\\''") + "'";
-    });
-    const stdout = execSync('git ' + escaped.join(' '), {
-      cwd,
-      stdio: 'pipe',
-      encoding: 'utf-8',
-    });
-    return { exitCode: 0, stdout: stdout.trim(), stderr: '' };
-  } catch (err) {
-    return {
-      exitCode: err.status ?? 1,
-      stdout: (err.stdout ?? '').toString().trim(),
-      stderr: (err.stderr ?? '').toString().trim(),
-    };
-  }
-}
+const isGitIgnored = _isGitIgnored;
+const execGit = _execGit;
 
 // ─── Phase utilities ──────────────────────────────────────────────────────────
 
@@ -259,7 +204,7 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
 function findPhaseInternal(cwd, phase) {
   if (!phase) return null;
 
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const phasesDir = _phasesDir(cwd);
   const normalized = normalizePhaseName(phase);
 
   // Search current phases first
@@ -267,7 +212,7 @@ function findPhaseInternal(cwd, phase) {
   if (current) return current;
 
   // Search archived milestone phases (newest first)
-  const milestonesDir = path.join(cwd, '.planning', 'milestones');
+  const milestonesDir = path.join(_planningDir(cwd), 'milestones');
   if (!fs.existsSync(milestonesDir)) return null;
 
   try {
@@ -294,7 +239,7 @@ function findPhaseInternal(cwd, phase) {
 }
 
 function getArchivedPhaseDirs(cwd) {
-  const milestonesDir = path.join(cwd, '.planning', 'milestones');
+  const milestonesDir = path.join(_planningDir(cwd), 'milestones');
   const results = [];
 
   if (!fs.existsSync(milestonesDir)) return results;
@@ -332,7 +277,7 @@ function getArchivedPhaseDirs(cwd) {
 
 function getRoadmapPhaseInternal(cwd, phaseNum) {
   if (!phaseNum) return null;
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const roadmapPath = _roadmapPath(cwd);
   if (!fs.existsSync(roadmapPath)) return null;
 
   try {
@@ -400,7 +345,7 @@ function generateSlugInternal(text) {
 
 function getMilestoneInfo(cwd) {
   try {
-    const roadmap = fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmap = fs.readFileSync(_roadmapPath(cwd), 'utf-8');
 
     // First: check for list-format roadmaps using 🚧 (in-progress) marker
     // e.g. "- 🚧 **v2.1 Belgium** — Phases 24-28 (in progress)"
@@ -441,7 +386,7 @@ function getMilestoneInfo(cwd) {
 function getMilestonePhaseFilter(cwd) {
   const milestonePhaseNums = new Set();
   try {
-    const roadmap = fs.readFileSync(path.join(cwd, '.planning', 'ROADMAP.md'), 'utf-8');
+    const roadmap = fs.readFileSync(_roadmapPath(cwd), 'utf-8');
     const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:/gi;
     let m;
     while ((m = phasePattern.exec(roadmap)) !== null) {

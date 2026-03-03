@@ -4,7 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { normalizePhaseName, findPhaseInternal, generateSlugInternal, toPosixPath, output, error } = require('./core.cjs');
+const { normalizePhaseName, findPhaseInternal, generateSlugInternal } = require('./core.cjs');
+const { output, error } = require('./utils/output.cjs');
 const { reconstructFrontmatter } = require('./frontmatter.cjs');
 
 function cmdTemplateSelect(cwd, planPath, raw) {

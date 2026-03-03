@@ -5,7 +5,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosixPath, output, error } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName } = require('./core.cjs');
+const { planningDir, phasesDir: _phasesDir, statePath: _statePath, toPosixPath } = require('./utils/paths.cjs');
+const { output, error } = require('./utils/output.cjs');
 
 function cmdInitExecutePhase(cwd, phase, raw) {
   if (!phase) {
@@ -256,7 +258,7 @@ function cmdInitQuick(cwd, description, raw) {
   const slug = description ? generateSlugInternal(description)?.substring(0, 40) : null;
 
   // Find next quick task number
-  const quickDir = path.join(cwd, '.planning', 'quick');
+  const quickDir = path.join(planningDir(cwd), 'quick');
   let nextNum = 1;
   try {
     const existing = fs.readdirSync(quickDir)
@@ -306,7 +308,7 @@ function cmdInitResume(cwd, raw) {
   // Check for interrupted agent
   let interruptedAgentId = null;
   try {
-    interruptedAgentId = fs.readFileSync(path.join(cwd, '.planning', 'current-agent-id.txt'), 'utf-8').trim();
+    interruptedAgentId = fs.readFileSync(path.join(planningDir(cwd), 'current-agent-id.txt'), 'utf-8').trim();
   } catch {}
 
   const result = {
@@ -447,7 +449,7 @@ function cmdInitTodos(cwd, area, raw) {
   const now = new Date();
 
   // List todos (reuse existing logic)
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const pendingDir = path.join(planningDir(cwd), 'todos', 'pending');
   let count = 0;
   const todos = [];
 
@@ -508,16 +510,16 @@ function cmdInitMilestoneOp(cwd, raw) {
   // Count phases
   let phaseCount = 0;
   let completedPhases = 0;
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const phasesDirPath = _phasesDir(cwd);
   try {
-    const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
+    const entries = fs.readdirSync(phasesDirPath, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
     phaseCount = dirs.length;
 
     // Count phases with summaries (completed)
     for (const dir of dirs) {
       try {
-        const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
+        const phaseFiles = fs.readdirSync(path.join(phasesDirPath, dir));
         const hasSummary = phaseFiles.some(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
         if (hasSummary) completedPhases++;
       } catch {}
@@ -525,7 +527,7 @@ function cmdInitMilestoneOp(cwd, raw) {
   } catch {}
 
   // Check archive
-  const archiveDir = path.join(cwd, '.planning', 'archive');
+  const archiveDir = path.join(planningDir(cwd), 'archive');
   let archivedMilestones = [];
   try {
     archivedMilestones = fs.readdirSync(archiveDir, { withFileTypes: true })
@@ -566,7 +568,7 @@ function cmdInitMapCodebase(cwd, raw) {
   const config = loadConfig(cwd);
 
   // Check for existing codebase maps
-  const codebaseDir = path.join(cwd, '.planning', 'codebase');
+  const codebaseDir = path.join(planningDir(cwd), 'codebase');
   let existingMaps = [];
   try {
     existingMaps = fs.readdirSync(codebaseDir).filter(f => f.endsWith('.md'));
@@ -601,13 +603,13 @@ function cmdInitProgress(cwd, raw) {
   const milestone = getMilestoneInfo(cwd);
 
   // Analyze phases
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const phasesDirPath2 = _phasesDir(cwd);
   const phases = [];
   let currentPhase = null;
   let nextPhase = null;
 
   try {
-    const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
+    const entries = fs.readdirSync(phasesDirPath2, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
 
     for (const dir of dirs) {
@@ -615,7 +617,7 @@ function cmdInitProgress(cwd, raw) {
       const phaseNumber = match ? match[1] : dir;
       const phaseName = match && match[2] ? match[2] : null;
 
-      const phasePath = path.join(phasesDir, dir);
+      const phasePath = path.join(phasesDirPath2, dir);
       const phaseFiles = fs.readdirSync(phasePath);
 
       const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md');
@@ -651,7 +653,7 @@ function cmdInitProgress(cwd, raw) {
   // Check for paused work
   let pausedAt = null;
   try {
-    const state = fs.readFileSync(path.join(cwd, '.planning', 'STATE.md'), 'utf-8');
+    const state = fs.readFileSync(_statePath(cwd), 'utf-8');
     const pauseMatch = state.match(/\*\*Paused At:\*\*\s*(.+)/);
     if (pauseMatch) pausedAt = pauseMatch[1].trim();
   } catch {}

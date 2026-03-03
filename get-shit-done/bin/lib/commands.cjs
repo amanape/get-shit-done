@@ -4,7 +4,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { safeReadFile, loadConfig, isGitIgnored, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, MODEL_PROFILES, toPosixPath, output, error, findPhaseInternal } = require('./core.cjs');
+const { loadConfig, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, MODEL_PROFILES, findPhaseInternal } = require('./core.cjs');
+const { planningDir, phasesDir, roadmapPath } = require('./utils/paths.cjs');
+const { safeReadFile } = require('./utils/io.cjs');
+const { output, error } = require('./utils/output.cjs');
+const { execGit, isGitIgnored } = require('./utils/git.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 
 function cmdGenerateSlug(text, raw) {
@@ -42,7 +46,7 @@ function cmdCurrentTimestamp(format, raw) {
 }
 
 function cmdListTodos(cwd, area, raw) {
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
+  const pendingDir = path.join(planningDir(cwd), 'todos', 'pending');
 
   let count = 0;
   const todos = [];
@@ -97,7 +101,7 @@ function cmdVerifyPathExists(cwd, targetPath, raw) {
 }
 
 function cmdHistoryDigest(cwd, raw) {
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const _phasesDir = phasesDir(cwd);
   const digest = { phases: {}, decisions: [], tech_stack: new Set() };
 
   // Collect all phase directories: archived + current
@@ -110,14 +114,14 @@ function cmdHistoryDigest(cwd, raw) {
   }
 
   // Add current phases
-  if (fs.existsSync(phasesDir)) {
+  if (fs.existsSync(_phasesDir)) {
     try {
-      const currentDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
+      const currentDirs = fs.readdirSync(_phasesDir, { withFileTypes: true })
         .filter(e => e.isDirectory())
         .map(e => e.name)
         .sort();
       for (const dir of currentDirs) {
-        allPhaseDirs.push({ name: dir, fullPath: path.join(phasesDir, dir), milestone: null });
+        allPhaseDirs.push({ name: dir, fullPath: path.join(_phasesDir, dir), milestone: null });
       }
     } catch {}
   }
@@ -380,8 +384,8 @@ async function cmdWebsearch(query, options, raw) {
 }
 
 function cmdProgressRender(cwd, format, raw) {
-  const phasesDir = path.join(cwd, '.planning', 'phases');
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const _phasesDir = phasesDir(cwd);
+  const _roadmapPath = roadmapPath(cwd);
   const milestone = getMilestoneInfo(cwd);
 
   const phases = [];
@@ -389,14 +393,14 @@ function cmdProgressRender(cwd, format, raw) {
   let totalSummaries = 0;
 
   try {
-    const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
+    const entries = fs.readdirSync(_phasesDir, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a, b) => comparePhaseNum(a, b));
 
     for (const dir of dirs) {
       const dm = dir.match(/^(\d+(?:\.\d+)*)-?(.*)/);
       const phaseNum = dm ? dm[1] : dir;
       const phaseName = dm && dm[2] ? dm[2].replace(/-/g, ' ') : '';
-      const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
+      const phaseFiles = fs.readdirSync(path.join(_phasesDir, dir));
       const plans = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').length;
       const summaries = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').length;
 
@@ -452,8 +456,8 @@ function cmdTodoComplete(cwd, filename, raw) {
     error('filename required for todo complete');
   }
 
-  const pendingDir = path.join(cwd, '.planning', 'todos', 'pending');
-  const completedDir = path.join(cwd, '.planning', 'todos', 'completed');
+  const pendingDir = path.join(planningDir(cwd), 'todos', 'pending');
+  const completedDir = path.join(planningDir(cwd), 'todos', 'completed');
   const sourcePath = path.join(pendingDir, filename);
 
   if (!fs.existsSync(sourcePath)) {
@@ -511,7 +515,7 @@ function cmdScaffold(cwd, type, options, raw) {
       }
       const slug = generateSlugInternal(name);
       const dirName = `${padded}-${slug}`;
-      const phasesParent = path.join(cwd, '.planning', 'phases');
+      const phasesParent = phasesDir(cwd);
       fs.mkdirSync(phasesParent, { recursive: true });
       const dirPath = path.join(phasesParent, dirName);
       fs.mkdirSync(dirPath, { recursive: true });
