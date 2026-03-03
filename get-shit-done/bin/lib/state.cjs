@@ -4,7 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter, output, error } = require('./core.cjs');
+const { escapeRegex, loadConfig, getMilestoneInfo, getMilestonePhaseFilter } = require('./core.cjs');
+const { planningDir, phasesDir, statePath: _statePath } = require('./utils/paths.cjs');
+const { output, error } = require('./utils/output.cjs');
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
 
 // Shared helper: extract a field value from STATE.md content.
@@ -21,15 +23,15 @@ function stateExtractField(content, fieldName) {
 
 function cmdStateLoad(cwd, raw) {
   const config = loadConfig(cwd);
-  const planningDir = path.join(cwd, '.planning');
+  const _planningDir = planningDir(cwd);
 
   let stateRaw = '';
   try {
-    stateRaw = fs.readFileSync(path.join(planningDir, 'STATE.md'), 'utf-8');
+    stateRaw = fs.readFileSync(path.join(_planningDir, 'STATE.md'), 'utf-8');
   } catch {}
 
-  const configExists = fs.existsSync(path.join(planningDir, 'config.json'));
-  const roadmapExists = fs.existsSync(path.join(planningDir, 'ROADMAP.md'));
+  const configExists = fs.existsSync(path.join(_planningDir, 'config.json'));
+  const roadmapExists = fs.existsSync(path.join(_planningDir, 'ROADMAP.md'));
   const stateExists = stateRaw.length > 0;
 
   const result = {
@@ -65,7 +67,7 @@ function cmdStateLoad(cwd, raw) {
 }
 
 function cmdStateGet(cwd, section, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   try {
     const content = fs.readFileSync(statePath, 'utf-8');
 
@@ -119,7 +121,7 @@ function readTextArgOrFile(cwd, value, filePath, label) {
 }
 
 function cmdStatePatch(cwd, patches, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   try {
     let content = fs.readFileSync(statePath, 'utf-8');
     const results = { updated: [], failed: [] };
@@ -156,7 +158,7 @@ function cmdStateUpdate(cwd, field, value) {
     error('field and value required for state update');
   }
 
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   try {
     let content = fs.readFileSync(statePath, 'utf-8');
     const fieldEscaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -208,7 +210,7 @@ function stateReplaceField(content, fieldName, newValue) {
 }
 
 function cmdStateAdvancePlan(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -237,7 +239,7 @@ function cmdStateAdvancePlan(cwd, raw) {
 }
 
 function cmdStateRecordMetric(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -271,21 +273,21 @@ function cmdStateRecordMetric(cwd, options, raw) {
 }
 
 function cmdStateUpdateProgress(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
 
   // Count summaries across all phases
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const _phasesDir = phasesDir(cwd);
   let totalPlans = 0;
   let totalSummaries = 0;
 
-  if (fs.existsSync(phasesDir)) {
-    const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
+  if (fs.existsSync(_phasesDir)) {
+    const phaseDirs = fs.readdirSync(_phasesDir, { withFileTypes: true })
       .filter(e => e.isDirectory()).map(e => e.name);
     for (const dir of phaseDirs) {
-      const files = fs.readdirSync(path.join(phasesDir, dir));
+      const files = fs.readdirSync(path.join(_phasesDir, dir));
       totalPlans += files.filter(f => f.match(/-PLAN\.md$/i)).length;
       totalSummaries += files.filter(f => f.match(/-SUMMARY\.md$/i)).length;
     }
@@ -314,7 +316,7 @@ function cmdStateUpdateProgress(cwd, raw) {
 }
 
 function cmdStateAddDecision(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   const { phase, summary, summary_file, rationale, rationale_file } = options;
@@ -352,7 +354,7 @@ function cmdStateAddDecision(cwd, options, raw) {
 }
 
 function cmdStateAddBlocker(cwd, text, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
   const blockerOptions = typeof text === 'object' && text !== null ? text : { text };
   let blockerText = null;
@@ -385,7 +387,7 @@ function cmdStateAddBlocker(cwd, text, raw) {
 }
 
 function cmdStateResolveBlocker(cwd, text, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
   if (!text) { output({ error: 'text required' }, raw); return; }
 
@@ -417,7 +419,7 @@ function cmdStateResolveBlocker(cwd, text, raw) {
 }
 
 function cmdStateRecordSession(cwd, options, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) { output({ error: 'STATE.md not found' }, raw); return; }
 
   let content = fs.readFileSync(statePath, 'utf-8');
@@ -452,7 +454,7 @@ function cmdStateRecordSession(cwd, options, raw) {
 }
 
 function cmdStateSnapshot(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
 
   if (!fs.existsSync(statePath)) {
     output({ error: 'STATE.md not found' }, raw);
@@ -584,10 +586,10 @@ function buildStateFrontmatter(bodyContent, cwd) {
 
   if (cwd) {
     try {
-      const phasesDir = path.join(cwd, '.planning', 'phases');
-      if (fs.existsSync(phasesDir)) {
+      const _phasesDir = phasesDir(cwd);
+      if (fs.existsSync(_phasesDir)) {
         const isDirInMilestone = getMilestonePhaseFilter(cwd);
-        const phaseDirs = fs.readdirSync(phasesDir, { withFileTypes: true })
+        const phaseDirs = fs.readdirSync(_phasesDir, { withFileTypes: true })
           .filter(e => e.isDirectory()).map(e => e.name)
           .filter(isDirInMilestone);
         let diskTotalPlans = 0;
@@ -595,7 +597,7 @@ function buildStateFrontmatter(bodyContent, cwd) {
         let diskCompletedPhases = 0;
 
         for (const dir of phaseDirs) {
-          const files = fs.readdirSync(path.join(phasesDir, dir));
+          const files = fs.readdirSync(path.join(_phasesDir, dir));
           const plans = files.filter(f => f.match(/-PLAN\.md$/i)).length;
           const summaries = files.filter(f => f.match(/-SUMMARY\.md$/i)).length;
           diskTotalPlans += plans;
@@ -682,7 +684,7 @@ function writeStateMd(statePath, content, cwd) {
 }
 
 function cmdStateJson(cwd, raw) {
-  const statePath = path.join(cwd, '.planning', 'STATE.md');
+  const statePath = _statePath(cwd);
   if (!fs.existsSync(statePath)) {
     output({ error: 'STATE.md not found' }, raw, 'STATE.md not found');
     return;
