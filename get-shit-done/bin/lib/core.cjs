@@ -7,6 +7,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const { safeReadFile: _safeReadFileFromIo } = require('./utils/io.cjs');
+const { output: _output, error: _error } = require('./utils/output.cjs');
 const { execGit: _execGit, isGitIgnored: _isGitIgnored } = require('./utils/git.cjs');
 
 // ─── Path helpers ────────────────────────────────────────────────────────────
@@ -35,28 +36,8 @@ const MODEL_PROFILES = {
 
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
-function output(result, raw, rawValue) {
-  if (raw && rawValue !== undefined) {
-    process.stdout.write(String(rawValue));
-  } else {
-    const json = JSON.stringify(result, null, 2);
-    // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
-    // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
-    if (json.length > 50000) {
-      const tmpPath = path.join(require('os').tmpdir(), `gsd-${Date.now()}.json`);
-      fs.writeFileSync(tmpPath, json, 'utf-8');
-      process.stdout.write('@file:' + tmpPath);
-    } else {
-      process.stdout.write(json);
-    }
-  }
-  process.exit(0);
-}
-
-function error(message) {
-  process.stderr.write('Error: ' + message + '\n');
-  process.exit(1);
-}
+const output = _output;
+const error = _error;
 
 // ─── File & Config utilities ──────────────────────────────────────────────────
 
