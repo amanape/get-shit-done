@@ -4,7 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, output, error } = require('./core.cjs');
+const { safeReadFile } = require('./utils/io.cjs');
+const { output, error } = require('./utils/output.cjs');
 
 // ─── Parsing engine ───────────────────────────────────────────────────────────
 

@@ -4,18 +4,20 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal } = require('./core.cjs');
+const { escapeRegex, normalizePhaseName, findPhaseInternal } = require('./core.cjs');
+const { phasesDir, roadmapPath } = require('./utils/paths.cjs');
+const { output, error } = require('./utils/output.cjs');
 
 function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const _roadmapPath = roadmapPath(cwd);
 
-  if (!fs.existsSync(roadmapPath)) {
+  if (!fs.existsSync(_roadmapPath)) {
     output({ found: false, error: 'ROADMAP.md not found' }, raw, '');
     return;
   }
 
   try {
-    const content = fs.readFileSync(roadmapPath, 'utf-8');
+    const content = fs.readFileSync(_roadmapPath, 'utf-8');
 
     // Escape special regex chars in phase number, handle decimal
     const escapedPhase = escapeRegex(phaseNum);
@@ -91,15 +93,15 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
 }
 
 function cmdRoadmapAnalyze(cwd, raw) {
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const _roadmapPath = roadmapPath(cwd);
 
-  if (!fs.existsSync(roadmapPath)) {
+  if (!fs.existsSync(_roadmapPath)) {
     output({ error: 'ROADMAP.md not found', milestones: [], phases: [], current_phase: null }, raw);
     return;
   }
 
-  const content = fs.readFileSync(roadmapPath, 'utf-8');
-  const phasesDir = path.join(cwd, '.planning', 'phases');
+  const content = fs.readFileSync(_roadmapPath, 'utf-8');
+  const _phasesDir = phasesDir(cwd);
 
   // Extract all phase headings: ## Phase N: Name or ### Phase N: Name
   const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
@@ -132,12 +134,12 @@ function cmdRoadmapAnalyze(cwd, raw) {
     let hasResearch = false;
 
     try {
-      const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
+      const entries = fs.readdirSync(_phasesDir, { withFileTypes: true });
       const dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
       const dirMatch = dirs.find(d => d.startsWith(normalized + '-') || d === normalized);
 
       if (dirMatch) {
-        const phaseFiles = fs.readdirSync(path.join(phasesDir, dirMatch));
+        const phaseFiles = fs.readdirSync(path.join(_phasesDir, dirMatch));
         planCount = phaseFiles.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').length;
         summaryCount = phaseFiles.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').length;
         hasContext = phaseFiles.some(f => f.endsWith('-CONTEXT.md') || f === 'CONTEXT.md');
@@ -222,7 +224,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     error('phase number required for roadmap update-plan-progress');
   }
 
-  const roadmapPath = path.join(cwd, '.planning', 'ROADMAP.md');
+  const _roadmapPath = roadmapPath(cwd);
 
   const phaseInfo = findPhaseInternal(cwd, phaseNum);
   if (!phaseInfo) {
@@ -241,12 +243,12 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   const status = isComplete ? 'Complete' : summaryCount > 0 ? 'In Progress' : 'Planned';
   const today = new Date().toISOString().split('T')[0];
 
-  if (!fs.existsSync(roadmapPath)) {
+  if (!fs.existsSync(_roadmapPath)) {
     output({ updated: false, reason: 'ROADMAP.md not found', plan_count: planCount, summary_count: summaryCount }, raw, 'no roadmap');
     return;
   }
 
-  let roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
+  let roadmapContent = fs.readFileSync(_roadmapPath, 'utf-8');
   const phaseEscaped = escapeRegex(phaseNum);
 
   // Progress table row: update Plans column (summaries/plans) and Status column
@@ -279,7 +281,7 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
   }
 
-  fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8');
+  fs.writeFileSync(_roadmapPath, roadmapContent, 'utf-8');
 
   output({
     updated: true,
